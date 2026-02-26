@@ -72,7 +72,7 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "unsafe-change-me")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool("DJANGO_DEBUG", False)
 
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", ["pos-system-ciq8.onrender.com","localhost", "127.0.0.1"])
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", ["pos-system-ciq8.onrender.com", "localhost", "127.0.0.1"]) or ["pos-system-ciq8.onrender.com", "localhost", "127.0.0.1"]
 
 if not DEBUG and SECRET_KEY == "unsafe-change-me":
     raise RuntimeError("DJANGO_SECRET_KEY must be set when DEBUG is False.")
