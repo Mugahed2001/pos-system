@@ -1,0 +1,51 @@
+from django.contrib import admin
+
+from .models import (
+    Account,
+    AccountDefaults,
+    AccountFullReconcile,
+    AccountFullReconcileLine,
+    AccountJournal,
+    AccountMove,
+    AccountMoveLine,
+    AccountMoveLineTax,
+    AccountPartialReconcile,
+    AccountPayment,
+    AccountTax,
+    AccountTaxGroup,
+    AccountTaxTag,
+    AccountTaxTagRel,
+    AccountingPeriod,
+    Audit,
+    CommissionPlan,
+    CommissionRate,
+    DebugLog,
+    TimeAttendanceRegister,
+    TransactionAccountingLine,
+)
+
+admin.site.register(
+    [
+        Account,
+        AccountingPeriod,
+        TransactionAccountingLine,
+        CommissionPlan,
+        CommissionRate,
+        TimeAttendanceRegister,
+        Audit,
+        DebugLog,
+        AccountJournal,
+        AccountDefaults,
+        AccountMove,
+        AccountMoveLine,
+        AccountMoveLineTax,
+        AccountPayment,
+        AccountPartialReconcile,
+        AccountFullReconcile,
+        AccountFullReconcileLine,
+        AccountTaxGroup,
+        AccountTax,
+        AccountTaxTag,
+        AccountTaxTagRel,
+    ]
+)

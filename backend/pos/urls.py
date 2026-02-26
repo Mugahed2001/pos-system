@@ -1,0 +1,155 @@
+from django.urls import path
+from rest_framework.routers import DefaultRouter
+
+from pos.views import (
+    AuthLoginView,
+    AuthLogoutView,
+    AuthMeView,
+    CashMovementView,
+    CashDrawerOpenView,
+    DailySalesReportView,
+    DeliveryAssignmentView,
+    DeviceRegisterView,
+    DeviceContextView,
+    DeviceSelectView,
+    DeviceChecksView,
+    DriversViewSet,
+    DeliveryProviderViewSet,
+    ProviderStoreMappingViewSet,
+    ProviderItemMappingViewSet,
+    ExternalOrderViewSet,
+    KdsQueueView,
+    KdsStatusUpdateView,
+    ExternalOrderMarkReadyView,
+    ExternalOrderRetryView,
+    IntegrationWebhookOrdersView,
+    IntegrationWebhookStatusView,
+    IntegrationWhatsAppWebhookView,
+    IntegrationErpPromotionsSyncView,
+    PaymentsBulkView,
+    PosConfigVersionView,
+    PosConfigView,
+    PosCustomerViewSet,
+    PosAddressViewSet,
+    PosOrderViewSet,
+    PosPromotionsView,
+    PrintReceiptView,
+    PrintTestReceiptView,
+    ShiftActiveView,
+    ShiftCloseView,
+    ShiftListView,
+    ShiftOpenView,
+    SyncStatusView,
+    PaymentsSummaryReportView,
+    VoidsDiscountsRefundsReportView,
+    PickupWindowOrdersView,
+    PickupWindowMarkArrivedView,
+    PickupWindowMarkReadyView,
+    PickupWindowMarkHandedOverView,
+    WaiterMarkDeliveredView,
+)
+
+router = DefaultRouter()
+router.register("pos/orders", PosOrderViewSet, basename="pos-order")
+router.register("admin/drivers", DriversViewSet, basename="admin-driver")
+router.register("pos/customers", PosCustomerViewSet, basename="pos-customer")
+router.register("admin/delivery-providers", DeliveryProviderViewSet, basename="admin-delivery-provider")
+router.register("admin/provider-store-mappings", ProviderStoreMappingViewSet, basename="admin-provider-store-mapping")
+router.register("admin/provider-item-mappings", ProviderItemMappingViewSet, basename="admin-provider-item-mapping")
+router.register("pos/external-orders", ExternalOrderViewSet, basename="pos-external-order")
+
+urlpatterns = [
+    path("auth/device/register", DeviceRegisterView.as_view(), name="device-register"),
+    path("pos/device/context", DeviceContextView.as_view(), name="pos-device-context"),
+    path("pos/device/select", DeviceSelectView.as_view(), name="pos-device-select"),
+    path("pos/device-checks", DeviceChecksView.as_view(), name="pos-device-checks"),
+    path("auth/login", AuthLoginView.as_view(), name="auth-login"),
+    path("auth/logout", AuthLogoutView.as_view(), name="auth-logout"),
+    path("auth/me", AuthMeView.as_view(), name="auth-me"),
+    path(
+        "integrations/<str:provider_code>/webhooks/orders",
+        IntegrationWebhookOrdersView.as_view(),
+        name="integration-webhook-orders",
+    ),
+    path(
+        "integrations/<str:provider_code>/webhooks/status",
+        IntegrationWebhookStatusView.as_view(),
+        name="integration-webhook-status",
+    ),
+    path(
+        "integrations/whatsapp/webhook",
+        IntegrationWhatsAppWebhookView.as_view(),
+        name="integration-whatsapp-webhook",
+    ),
+    path(
+        "integrations/erp/promotions/sync",
+        IntegrationErpPromotionsSyncView.as_view(),
+        name="integration-erp-promotions-sync",
+    ),
+    path(
+        "integrations/external-orders/<uuid:external_order_id>/mark-ready",
+        ExternalOrderMarkReadyView.as_view(),
+        name="external-order-mark-ready",
+    ),
+    path(
+        "integrations/external-orders/<uuid:external_order_id>/retry",
+        ExternalOrderRetryView.as_view(),
+        name="external-order-retry",
+    ),
+    path("pos/config", PosConfigView.as_view(), name="pos-config"),
+    path("pos/config/version", PosConfigVersionView.as_view(), name="pos-config-version"),
+    path("pos/payments/bulk", PaymentsBulkView.as_view(), name="pos-payments-bulk"),
+    path("pos/promotions", PosPromotionsView.as_view(), name="pos-promotions"),
+    path("pos/preorders", PosOrderViewSet.as_view({"post": "create"}), name="pos-preorders"),
+    path("pos/delivery/assignments", DeliveryAssignmentView.as_view(), name="pos-delivery-assignment"),
+    path("pos/sync/status", SyncStatusView.as_view(), name="pos-sync-status"),
+    path(
+        "pos/customers/<uuid:customer_id>/addresses/",
+        PosAddressViewSet.as_view({"get": "list", "post": "create"}),
+        name="pos-customer-address-list",
+    ),
+    path(
+        "pos/customers/<uuid:customer_id>/addresses/<uuid:pk>/",
+        PosAddressViewSet.as_view({"get": "retrieve", "patch": "partial_update", "delete": "destroy"}),
+        name="pos-customer-address-detail",
+    ),
+    path("pos/shifts/open", ShiftOpenView.as_view(), name="pos-shift-open"),
+    path("pos/shifts/active", ShiftActiveView.as_view(), name="pos-shift-active"),
+    path("pos/shifts/<uuid:pk>/close", ShiftCloseView.as_view(), name="pos-shift-close"),
+    path("pos/shifts", ShiftListView.as_view(), name="pos-shift-list"),
+    path("pos/cash-movements", CashMovementView.as_view(), name="pos-cash-movement"),
+    path("pos/print/receipt", PrintReceiptView.as_view(), name="pos-print-receipt"),
+    path("pos/print/test-receipt", PrintTestReceiptView.as_view(), name="pos-print-test-receipt"),
+    path("pos/cash-drawer/open", CashDrawerOpenView.as_view(), name="pos-cash-drawer-open"),
+    path("pos/pickup-window/orders", PickupWindowOrdersView.as_view(), name="pos-pickup-window-orders"),
+    path(
+        "pos/pickup-window/orders/<uuid:pk>/mark-arrived",
+        PickupWindowMarkArrivedView.as_view(),
+        name="pos-pickup-window-mark-arrived",
+    ),
+    path(
+        "pos/pickup-window/orders/<uuid:pk>/mark-ready",
+        PickupWindowMarkReadyView.as_view(),
+        name="pos-pickup-window-mark-ready",
+    ),
+    path(
+        "pos/pickup-window/orders/<uuid:pk>/mark-handed-over",
+        PickupWindowMarkHandedOverView.as_view(),
+        name="pos-pickup-window-mark-handed-over",
+    ),
+    path(
+        "pos/waiter/orders/<uuid:pk>/mark-delivered",
+        WaiterMarkDeliveredView.as_view(),
+        name="pos-waiter-mark-delivered",
+    ),
+    path("kds/queue", KdsQueueView.as_view(), name="kds-queue"),
+    path("kds/items/<uuid:pk>/status", KdsStatusUpdateView.as_view(), name="kds-status-update"),
+    path("reports/daily-sales", DailySalesReportView.as_view(), name="report-daily-sales"),
+    path("reports/payments-summary", PaymentsSummaryReportView.as_view(), name="report-payments-summary"),
+    path(
+        "reports/voids-discounts-refunds",
+        VoidsDiscountsRefundsReportView.as_view(),
+        name="report-voids-discounts-refunds",
+    ),
+    *router.urls,
+]

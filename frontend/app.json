@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "POS Frontend",
+    "slug": "pos-frontend",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./src/shared/assets/icons/icon.jpeg",
+    "platforms": ["ios", "android", "web"],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/shared/assets/icons/icon.jpeg",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./src/shared/assets/icons/icon.jpeg"
+    }
+  }
+}

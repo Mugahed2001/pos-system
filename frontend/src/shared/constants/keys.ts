@@ -1,0 +1,15 @@
+export const AUTH_TOKEN_KEY = "pos_auth_token";
+export const AUTH_USER_KEY = "pos_auth_user";
+export const AUTH_USERNAME_KEY = "pos_auth_username";
+export const DEVICE_TOKEN_KEY = "pos_device_token";
+export const DEVICE_ID_KEY = "pos_device_id";
+export const BRANCH_ID_KEY = "pos_branch_id";
+export const CONFIG_VERSION_KEY = "pos_config_version";
+export const POS_CONFIG_CACHE_KEY = "pos_config_cache";
+export const ACTIVE_SHIFT_ID_KEY = "pos_active_shift_id";
+export const DEVICE_CHECKS_CACHE_KEY = "pos_device_checks_cache";
+export const SHIFT_CLOSE_OUTBOX_KEY = "pos_shift_close_outbox";
+export const POS_PERF_METRICS_KEY = "pos_perf_metrics";
+export const POS_CASHIER_DRAFT_KEY_PREFIX = "pos_cashier_draft";
+export const POS_THEME_MODE_KEY = "pos_theme_mode";
+export const POS_CASHIER_SETTINGS_KEY = "pos_cashier_settings";

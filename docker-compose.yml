@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: pos_postgres
+    environment:
+      POSTGRES_DB: pos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: pos_redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pos_backend
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DJANGO_SECRET_KEY: change-me-in-prod
+      DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      DJANGO_CORS_ALLOW_ALL: "true"
+      DJANGO_SECURE_SSL_REDIRECT: "false"
+      DJANGO_SESSION_COOKIE_SECURE: "false"
+      DJANGO_CSRF_COOKIE_SECURE: "false"
+      DJANGO_SECURE_HSTS_SECONDS: "0"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/pos
+      DB_SCHEMA: pos_loc
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py seed_pos_demo &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+
+volumes:
+  postgres_data:
