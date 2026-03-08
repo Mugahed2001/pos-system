@@ -7,10 +7,12 @@ type OrderSummaryProps = {
   tax: number;
   excise?: number;
   service: number;
+  deliveryFee?: number;
   discount: number;
   discountLabel?: string;
   total: number;
   showService?: boolean;
+  showDeliveryFee?: boolean;
 };
 
 export const OrderSummary = memo(function OrderSummary(props: OrderSummaryProps) {
@@ -36,6 +38,12 @@ export const OrderSummary = memo(function OrderSummary(props: OrderSummaryProps)
         <View style={styles.line}>
           <Text style={[styles.label, { color: labelColor }]}>رسوم الخدمة</Text>
           <Text style={[styles.value, { color: valueColor }]}>{props.service.toFixed(2)}</Text>
+        </View>
+      ) : null}
+      {props.showDeliveryFee ? (
+        <View style={styles.line}>
+          <Text style={[styles.label, { color: labelColor }]}>رسوم التوصيل</Text>
+          <Text style={[styles.value, { color: valueColor }]}>{(props.deliveryFee ?? 0).toFixed(2)}</Text>
         </View>
       ) : null}
       <View style={styles.line}>

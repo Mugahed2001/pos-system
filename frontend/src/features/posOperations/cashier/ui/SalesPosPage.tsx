@@ -108,6 +108,16 @@ type SplitPaymentLine = {
   referenceNo: string;
 };
 
+type MenuViewMode = "cards" | "list";
+type MenuDensity = "compact" | "comfortable";
+
+type PersistedCashierMenuPrefs = {
+  version: 1;
+  viewMode: MenuViewMode;
+  density: MenuDensity;
+  manualColumns: number | null;
+};
+
 function normalizeArabicLabel(value: string) {
   return (value || "").trim().toLowerCase();
 }
@@ -191,6 +201,10 @@ const EXCISE_CATEGORY_AR: Record<string, string> = {
   tobacco_products: "منتجات التبغ",
   shisha: "الشيشة",
 };
+
+const POS_CASHIER_MENU_PREFS_KEY_PREFIX = "pos_cashier_menu_prefs_v1";
+const ALL_CATEGORY_ID = "__all__";
+const CATEGORY_COLOR_PALETTE = ["#0EA5E9", "#F97316", "#22C55E", "#A855F7", "#EAB308", "#14B8A6", "#EF4444", "#6366F1", "#84CC16", "#EC4899"];
 
 const localizeUiText = (value: string) => {
   const text = (value || "").trim();
@@ -444,10 +458,14 @@ export function SalesPosPage() {
   const [selectedChannel, setSelectedChannel] = useState<OrderChannelCode>("dine_in");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [menuViewMode, setMenuViewMode] = useState<MenuViewMode>("cards");
+  const [menuDensity, setMenuDensity] = useState<MenuDensity>("comfortable");
+  const [menuColumnsOverride, setMenuColumnsOverride] = useState<number | null>(null);
   const [rushMode, setRushMode] = useState(false);
   const [lastAddedItemId, setLastAddedItemId] = useState<string | null>(null);
   const searchInputRef = useRef<TextInput>(null);
   const hasRestoredDraftRef = useRef(false);
+  const hasRestoredMenuPrefsRef = useRef(false);
   const lastRealtimeRefreshAtRef = useRef(0);
 
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
@@ -512,6 +530,13 @@ export function SalesPosPage() {
     () => (effectiveConfig?.menu_categories ?? []).map((cat) => ({ ...cat, name: localizeUiText(cat.name) })),
     [effectiveConfig?.menu_categories],
   );
+  const categoryColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (let index = 0; index < categories.length; index += 1) {
+      map[categories[index].id] = CATEGORY_COLOR_PALETTE[index % CATEGORY_COLOR_PALETTE.length];
+    }
+    return map;
+  }, [categories]);
   const floors = useMemo(
     () => (effectiveConfig?.floors ?? []).map((floor) => ({ ...floor, name: localizeUiText(floor.name) })),
     [effectiveConfig?.floors],
@@ -528,6 +553,19 @@ export function SalesPosPage() {
         if (parsed !== undefined) return parsed;
       }
       return fallback;
+    },
+    [uiToggles],
+  );
+  const readUiNumber = useCallback(
+    (keys: string[]): number | null => {
+      for (const key of keys) {
+        const rawValue = uiToggles[key];
+        if (rawValue === undefined || rawValue === null || rawValue === "") continue;
+        const parsed = toNumberFromUnknown(rawValue);
+        if (!Number.isFinite(parsed)) continue;
+        return Math.max(0, parsed);
+      }
+      return null;
     },
     [uiToggles],
   );
@@ -590,6 +628,16 @@ export function SalesPosPage() {
     ["enable_service_charge", "show_service_charge", "service_charge_enabled"],
     true,
   );
+  const serviceChargePercentOverride = readUiNumber([
+    "service_charge_percent",
+    "service_charge_rate_percent",
+    "service_percent",
+  ]);
+  const deliveryFeeAmount = readUiNumber([
+    "delivery_fee_amount",
+    "delivery_charge_amount",
+    "delivery_fee",
+  ]);
   const availableChannels = useMemo(
     () =>
       channels.filter((channel) => {
@@ -682,7 +730,7 @@ export function SalesPosPage() {
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
     return items.filter((item) => {
-      const byCategory = selectedCategoryId ? item.category === selectedCategoryId : true;
+      const byCategory = selectedCategoryId && selectedCategoryId !== ALL_CATEGORY_ID ? item.category === selectedCategoryId : true;
       const bySearch = query ? `${item.item_name} ${item.item_code}`.toLowerCase().includes(query) : true;
       return byCategory && bySearch;
     });
@@ -694,13 +742,21 @@ export function SalesPosPage() {
     const username = user?.username || "anonymous";
     return `${POS_CASHIER_DRAFT_KEY_PREFIX}:${username}:${branchId}`;
   }, [user?.username, branchId]);
-  const menuColumns = useMemo(() => {
+  const menuPrefsStorageKey = useMemo(() => {
+    const username = user?.username || "anonymous";
+    return `${POS_CASHIER_MENU_PREFS_KEY_PREFIX}:${username}:${branchId}`;
+  }, [user?.username, branchId]);
+  const autoMenuColumns = useMemo(() => {
     if (availableWidth >= 1800) return 6;
     if (availableWidth >= 1550) return 5;
     if (availableWidth >= 1300) return 4;
     if (availableWidth >= 1050) return 3;
     return 2;
   }, [availableWidth]);
+  const menuColumns = useMemo(() => {
+    const resolved = menuColumnsOverride ?? autoMenuColumns;
+    return Math.max(2, Math.min(6, resolved));
+  }, [menuColumnsOverride, autoMenuColumns]);
   const handleLayoutWidth = useCallback((event: LayoutChangeEvent) => {
     const next = Math.floor(event.nativeEvent.layout.width);
     setContentWidth((prev) => (Math.abs(prev - next) > 4 ? next : prev));
@@ -739,6 +795,76 @@ export function SalesPosPage() {
     if (!draftStorageKey) return;
     await storage.remove(draftStorageKey);
   }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!menuPrefsStorageKey) return;
+    let mounted = true;
+    hasRestoredMenuPrefsRef.current = false;
+    setMenuViewMode("cards");
+    setMenuDensity("comfortable");
+    setMenuColumnsOverride(null);
+    void storage.getString(menuPrefsStorageKey).then((raw) => {
+      if (!mounted) return;
+      hasRestoredMenuPrefsRef.current = true;
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as PersistedCashierMenuPrefs | { version?: number; preset?: string; viewMode?: MenuViewMode; density?: MenuDensity; manualColumns?: number | null };
+        if (!parsed) return;
+        if (parsed.version === 2 && parsed.preset) {
+          const preset = parsed.preset;
+          if (preset === "list") {
+            setMenuViewMode("list");
+            setMenuDensity("comfortable");
+            setMenuColumnsOverride(null);
+            return;
+          }
+          if (preset === "cards_small") {
+            setMenuViewMode("cards");
+            setMenuDensity("compact");
+            setMenuColumnsOverride(Math.min(6, autoMenuColumns + 1));
+            return;
+          }
+          if (preset === "cards_large") {
+            setMenuViewMode("cards");
+            setMenuDensity("comfortable");
+            setMenuColumnsOverride(Math.max(2, autoMenuColumns - 1));
+            return;
+          }
+          setMenuViewMode("cards");
+          setMenuDensity("comfortable");
+          setMenuColumnsOverride(null);
+          return;
+        }
+        if (parsed.version !== 1) return;
+        setMenuViewMode(parsed.viewMode === "list" ? "list" : "cards");
+        setMenuDensity(parsed.density === "compact" ? "compact" : "comfortable");
+        const parsedColumns =
+          parsed.manualColumns === null || parsed.manualColumns === undefined
+            ? null
+            : Math.max(2, Math.min(6, toNumber(parsed.manualColumns)));
+        setMenuColumnsOverride(parsedColumns);
+      } catch {
+        // ignore invalid payload
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [menuPrefsStorageKey, autoMenuColumns]);
+
+  useEffect(() => {
+    if (!menuPrefsStorageKey || !hasRestoredMenuPrefsRef.current) return;
+    const timer = setTimeout(() => {
+      const payload: PersistedCashierMenuPrefs = {
+        version: 1,
+        viewMode: menuViewMode,
+        density: menuDensity,
+        manualColumns: menuColumnsOverride,
+      };
+      void storage.setString(menuPrefsStorageKey, JSON.stringify(payload));
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [menuPrefsStorageKey, menuViewMode, menuDensity, menuColumnsOverride]);
 
   useEffect(() => {
     if (!branchId || !effectiveConfig || hasRestoredDraftRef.current) return;
@@ -1134,10 +1260,15 @@ export function SalesPosPage() {
   const cartTax = useMemo(() => ((cartSubtotal + cartExcise) * taxRate) / 100, [cartSubtotal, cartExcise, taxRate]);
   const cartService = useMemo(() => {
     if (!canApplyServiceCharge) return 0;
+    if (serviceChargePercentOverride !== null) return (cartSubtotal * serviceChargePercentOverride) / 100;
     if (!activeService) return 0;
     if (activeService.charge_type === "fixed") return toNumber(activeService.value);
     return (cartSubtotal * toNumber(activeService.value)) / 100;
-  }, [activeService, canApplyServiceCharge, cartSubtotal]);
+  }, [activeService, canApplyServiceCharge, cartSubtotal, serviceChargePercentOverride]);
+  const cartDeliveryFee = useMemo(() => {
+    if (selectedChannel !== "delivery") return 0;
+    return Math.max(0, deliveryFeeAmount ?? 0);
+  }, [selectedChannel, deliveryFeeAmount]);
   const promotionResult = useMemo(
     () => calculatePromotionDiscount(appliedPromotion, cartSubtotal),
     [appliedPromotion, cartSubtotal],
@@ -1153,8 +1284,8 @@ export function SalesPosPage() {
     return appliedPromotion.offer.title;
   }, [appliedPromotion]);
   const cartTotal = useMemo(
-    () => cartSubtotal + cartTax + cartExcise + cartService - cartDiscount,
-    [cartSubtotal, cartTax, cartExcise, cartService, cartDiscount],
+    () => cartSubtotal + cartTax + cartExcise + cartService + cartDeliveryFee - cartDiscount,
+    [cartSubtotal, cartTax, cartExcise, cartService, cartDeliveryFee, cartDiscount],
   );
   const deferredTotalAmount = useMemo(() => {
     if (deferredPaymentDetail) return toNumber(deferredPaymentDetail.grand_total);
@@ -1864,7 +1995,11 @@ export function SalesPosPage() {
     } finally {
       setSaleActionLoading(false);
     }
-  }, [loadDeferredPaymentContext, resetSplitPaymentLines, submitDraft]);
+  }, [
+    loadDeferredPaymentContext,
+    resetSplitPaymentLines,
+    submitDraft,
+  ]);
 
   const handleSubmitDeferredPayment = useCallback(async () => {
     if (!deferredPaymentOrderId) return;
@@ -2005,7 +2140,7 @@ export function SalesPosPage() {
   return (
     <View style={[styles.screen, { backgroundColor: theme.bg }]}>
       <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: theme.textMain }]}>نقطة البيع للكاشير</Text>
+        <Text style={[styles.title, { color: theme.textMain }]}></Text>
         <View style={styles.headerRight}>
           <Pressable
             accessibilityLabel={rushMode ? "تعطيل وضع الذروة" : "تفعيل وضع الذروة"}
@@ -2120,10 +2255,12 @@ export function SalesPosPage() {
                 tax={cartTax}
                 excise={cartExcise}
                 service={cartService}
+                deliveryFee={cartDeliveryFee}
                 discount={cartDiscount}
                 discountLabel={discountLabel}
                 total={cartTotal}
                 showService={canApplyServiceCharge}
+                showDeliveryFee={selectedChannel === "delivery" && cartDeliveryFee > 0}
               />
             }
             total={cartTotal}
@@ -2133,7 +2270,7 @@ export function SalesPosPage() {
             }}
             onSend={() => {
               if (!canUseSend) return;
-              void submitDraft("submit");
+              void handleSaleAndSendToKitchen();
             }}
             onPrint={() => {
               if (!canUsePrint) return;
@@ -2161,6 +2298,7 @@ export function SalesPosPage() {
           <MenuPanel
             theme={theme}
             categories={categories}
+            categoryColors={categoryColors}
             selectedCategoryId={selectedCategoryId}
             onSelectCategory={setSelectedCategoryId}
             search={search}
@@ -2169,6 +2307,15 @@ export function SalesPosPage() {
             onAddItem={openQuickAdd}
             resolveItemPrice={resolveItemPrice}
             menuColumns={menuColumns}
+            menuColumnsAuto={autoMenuColumns}
+            hasManualMenuColumns={menuColumnsOverride !== null}
+            onIncreaseColumns={() => setMenuColumnsOverride((prev) => Math.min(6, (prev ?? autoMenuColumns) + 1))}
+            onDecreaseColumns={() => setMenuColumnsOverride((prev) => Math.max(2, (prev ?? autoMenuColumns) - 1))}
+            onResetColumns={() => setMenuColumnsOverride(null)}
+            menuViewMode={menuViewMode}
+            onChangeMenuViewMode={setMenuViewMode}
+            menuDensity={menuDensity}
+            onChangeMenuDensity={setMenuDensity}
             searchInputRef={searchInputRef}
             rushMode={rushMode}
             lastAddedItemId={lastAddedItemId}
@@ -2240,10 +2387,12 @@ export function SalesPosPage() {
                 tax={cartTax}
                 excise={cartExcise}
                 service={cartService}
+                deliveryFee={cartDeliveryFee}
                 discount={cartDiscount}
                 discountLabel={discountLabel}
                 total={cartTotal}
                 showService={canApplyServiceCharge}
+                showDeliveryFee={selectedChannel === "delivery" && cartDeliveryFee > 0}
               />
             }
             total={cartTotal}
@@ -2253,7 +2402,7 @@ export function SalesPosPage() {
             }}
             onSend={() => {
               if (!canUseSend) return;
-              void submitDraft("submit");
+              void handleSaleAndSendToKitchen();
             }}
             onPrint={() => {
               if (!canUsePrint) return;
@@ -2611,10 +2760,12 @@ export function SalesPosPage() {
                 tax={cartTax}
                 excise={cartExcise}
                 service={cartService}
+                deliveryFee={cartDeliveryFee}
                 discount={cartDiscount}
                 discountLabel={discountLabel}
                 total={cartTotal}
                 showService={canApplyServiceCharge}
+                showDeliveryFee={selectedChannel === "delivery" && cartDeliveryFee > 0}
               />
             </View>
 
@@ -2868,6 +3019,7 @@ export function SalesPosPage() {
 type MenuPanelProps = {
   theme: AppThemePalette;
   categories: Array<{ id: string; name: string }>;
+  categoryColors: Record<string, string>;
   selectedCategoryId: string | null;
   onSelectCategory: (id: string) => void;
   search: string;
@@ -2876,15 +3028,26 @@ type MenuPanelProps = {
   onAddItem: (item: ItemDto) => void;
   resolveItemPrice: (item: ItemDto) => number;
   menuColumns: number;
+  menuColumnsAuto: number;
+  hasManualMenuColumns: boolean;
+  onIncreaseColumns: () => void;
+  onDecreaseColumns: () => void;
+  onResetColumns: () => void;
+  menuViewMode: MenuViewMode;
+  onChangeMenuViewMode: (mode: MenuViewMode) => void;
+  menuDensity: MenuDensity;
+  onChangeMenuDensity: (density: MenuDensity) => void;
   searchInputRef: { current: TextInput | null };
   rushMode: boolean;
   lastAddedItemId: string | null;
 };
 
 const MenuPanel = memo(function MenuPanel(props: MenuPanelProps) {
-  const resolvedColumns = Math.max(2, Math.min(props.menuColumns, 5));
+  const resolvedColumns = props.menuViewMode === "list" ? 1 : Math.max(2, Math.min(props.menuColumns, 6));
   const effectiveColumns = Math.max(1, Math.min(resolvedColumns, props.items.length || 1));
   const itemsScrollRef = useRef<ScrollView | null>(null);
+  const isCompactDensity = props.menuDensity === "compact";
+  const isListMode = props.menuViewMode === "list";
   const itemRows = useMemo(() => {
     const rows: ItemDto[][] = [];
     for (let i = 0; i < props.items.length; i += effectiveColumns) {
@@ -2892,7 +3055,11 @@ const MenuPanel = memo(function MenuPanel(props: MenuPanelProps) {
     }
     return rows;
   }, [props.items, effectiveColumns]);
-  const estimatedRowHeight = props.rushMode ? 98 : 112;
+  const estimatedRowHeight = useMemo(() => {
+    if (isListMode) return isCompactDensity ? 70 : 84;
+    if (props.rushMode) return isCompactDensity ? 92 : 98;
+    return isCompactDensity ? 102 : 116;
+  }, [isListMode, isCompactDensity, props.rushMode]);
   const itemsViewportHeight = useMemo(
     () => Math.max(estimatedRowHeight + 10, Math.min(520, itemRows.length * estimatedRowHeight + 10)),
     [estimatedRowHeight, itemRows.length],
@@ -2933,24 +3100,91 @@ const MenuPanel = memo(function MenuPanel(props: MenuPanelProps) {
           { backgroundColor: leftPalette.soft, borderColor: leftPalette.searchBorder, color: leftPalette.text },
         ]}
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
-        {props.categories.map((cat) => (
+      <View style={styles.menuControlsRow}>
+        <View style={styles.menuSegment}>
           <Pressable
-            key={cat.id}
-            style={[
-              styles.chip,
-              { borderColor: leftPalette.border, backgroundColor: leftPalette.soft },
-              props.selectedCategoryId === cat.id && [styles.chipActive, { backgroundColor: leftPalette.primary, borderColor: leftPalette.primary }],
-            ]}
-            onPress={() => props.onSelectCategory(cat.id)}
+            style={[styles.controlChip, isListMode && styles.controlChipActive]}
+            onPress={() => props.onChangeMenuViewMode("list")}
           >
-            <Text style={[styles.chipText, { color: leftPalette.text }, props.selectedCategoryId === cat.id && styles.chipTextActive]}>{cat.name}</Text>
+            <Text style={[styles.controlChipText, isListMode && styles.controlChipTextActive]}>قائمة</Text>
           </Pressable>
-        ))}
+          <Pressable
+            style={[styles.controlChip, !isListMode && styles.controlChipActive]}
+            onPress={() => props.onChangeMenuViewMode("cards")}
+          >
+            <Text style={[styles.controlChipText, !isListMode && styles.controlChipTextActive]}>بطاقات</Text>
+          </Pressable>
+        </View>
+        <View style={styles.menuSegment}>
+          <Pressable
+            style={[styles.iconChip, isCompactDensity && styles.controlChipActive]}
+            accessibilityLabel="تصغير بطاقات الأصناف"
+            onPress={() => props.onChangeMenuDensity("compact")}
+          >
+            <Text style={[styles.controlChipText, isCompactDensity && styles.controlChipTextActive]}>A-</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.iconChip, !isCompactDensity && styles.controlChipActive]}
+            accessibilityLabel="تكبير بطاقات الأصناف"
+            onPress={() => props.onChangeMenuDensity("comfortable")}
+          >
+            <Text style={[styles.controlChipText, !isCompactDensity && styles.controlChipTextActive]}>A+</Text>
+          </Pressable>
+        </View>
+        {!isListMode ? (
+          <View style={styles.menuSegment}>
+            <Pressable style={styles.iconChip} accessibilityLabel="تقليل الأعمدة" onPress={props.onDecreaseColumns}>
+              <Text style={styles.controlChipText}>-</Text>
+            </Pressable>
+            <Text style={styles.columnsLabel}>أعمدة {props.menuColumns}</Text>
+            <Pressable style={styles.iconChip} accessibilityLabel="زيادة الأعمدة" onPress={props.onIncreaseColumns}>
+              <Text style={styles.controlChipText}>+</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.controlChip, !props.hasManualMenuColumns && styles.controlChipActive]}
+              onPress={props.onResetColumns}
+            >
+              <Text style={[styles.controlChipText, !props.hasManualMenuColumns && styles.controlChipTextActive]}>
+                {props.hasManualMenuColumns ? "تلقائي" : `تلقائي (${props.menuColumnsAuto})`}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
+        <Pressable
+          style={[
+            styles.chip,
+            { borderColor: leftPalette.border, backgroundColor: leftPalette.soft },
+            props.selectedCategoryId === ALL_CATEGORY_ID && [styles.chipActive, { backgroundColor: leftPalette.primary, borderColor: leftPalette.primary }],
+          ]}
+          onPress={() => props.onSelectCategory(ALL_CATEGORY_ID)}
+        >
+          <Text style={[styles.chipText, { color: leftPalette.text }, props.selectedCategoryId === ALL_CATEGORY_ID && styles.chipTextActive]}>
+            الكل
+          </Text>
+        </Pressable>
+        {props.categories.map((cat) => {
+          const categoryColor = props.categoryColors[cat.id] ?? leftPalette.primary;
+          const isActive = props.selectedCategoryId === cat.id;
+          return (
+            <Pressable
+              key={cat.id}
+              style={[
+                styles.chip,
+                { borderColor: categoryColor, backgroundColor: leftPalette.soft },
+                isActive && [styles.chipActive, { backgroundColor: categoryColor, borderColor: categoryColor }],
+              ]}
+              onPress={() => props.onSelectCategory(cat.id)}
+            >
+              <Text style={[styles.chipText, { color: isActive ? "#FFFFFF" : categoryColor }, isActive && styles.chipTextActive]}>{cat.name}</Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
       <View style={[styles.itemsArea, { maxHeight: itemsViewportHeight, minHeight: Math.min(itemsViewportHeight, estimatedRowHeight + 10) }]}>
         <ScrollView
-          key={`menu-grid-${effectiveColumns}-${props.selectedCategoryId ?? "all"}-${props.search}`}
+          key={`menu-grid-${props.menuViewMode}-${effectiveColumns}-${props.selectedCategoryId ?? "all"}-${props.search}`}
           ref={itemsScrollRef}
           style={styles.itemsList}
           contentContainerStyle={styles.itemsGrid}
@@ -2965,17 +3199,18 @@ const MenuPanel = memo(function MenuPanel(props: MenuPanelProps) {
                   accessibilityLabel={`إضافة ${item.item_name}`}
                   style={[
                     styles.itemCard,
-                    styles.itemCardGrid,
+                    isListMode ? styles.itemCardList : styles.itemCardGrid,
+                    isCompactDensity ? styles.itemCardCompact : styles.itemCardComfortable,
                     props.rushMode && styles.itemCardRush,
-                    { borderColor: leftPalette.border, backgroundColor: leftPalette.soft },
+                    { borderColor: props.categoryColors[item.category] ?? leftPalette.border, backgroundColor: leftPalette.soft },
                     props.lastAddedItemId === item.item_id && [styles.itemCardAdded, { borderColor: leftPalette.itemAddedBorder, backgroundColor: leftPalette.itemAddedBg }],
                   ]}
                   onPress={() => props.onAddItem(item)}
                 >
-                  <Text style={[styles.itemTitle, { color: leftPalette.text }]} numberOfLines={2}>
+                  <Text style={[styles.itemTitle, isListMode && styles.itemTitleList, isCompactDensity && styles.itemTitleCompact, { color: leftPalette.text }]} numberOfLines={isListMode ? 1 : isCompactDensity ? 1 : 2}>
                     {item.item_name}
                   </Text>
-                  <Text style={[styles.itemMeta, { color: leftPalette.muted }]} numberOfLines={1}>
+                  <Text style={[styles.itemMeta, isCompactDensity && styles.itemMetaCompact, { color: leftPalette.muted }]} numberOfLines={1}>
                     {item.item_code}
                   </Text>
                   {toNumber(item.excise_rate_percent) > 0 ? (
@@ -3048,6 +3283,40 @@ const styles = StyleSheet.create({
   },
   
   menuRush: { padding: 8, gap: 0 },
+  menuControlsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  menuSegment: { flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" },
+  controlChip: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    minHeight: 32,
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  iconChip: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    minHeight: 32,
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    minWidth: 34,
+    alignItems: "center",
+  },
+  controlChipActive: { backgroundColor: THEME.primary, borderColor: THEME.primary },
+  controlChipText: { color: THEME.text, fontWeight: "800", textAlign: "right" },
+  controlChipTextActive: { color: "#FFFFFF" },
+  columnsLabel: { color: THEME.text, fontWeight: "800", minWidth: 66, textAlign: "center" },
   categoriesRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -3094,20 +3363,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.border,
     borderRadius: 12,
-    minHeight: 96,
+    minHeight: 102,
     paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     gap: 4,
     width: "100%",
     alignSelf: "stretch",
     backgroundColor: "#FFFFFF",
   },
   itemCardGrid: {},
+  itemCardList: { minHeight: 78, gap: 3 },
+  itemCardCompact: { minHeight: 90, paddingVertical: 6, paddingHorizontal: 7, gap: 3 },
+  itemCardComfortable: { minHeight: 112, paddingVertical: 9, paddingHorizontal: 9, gap: 4 },
   itemCardRush: { minHeight: 88, paddingVertical: 6, gap: 3 },
   itemCardAdded: { borderColor: "#16A34A", backgroundColor: "#F0FDF4" },
   emptyItems: { color: THEME.muted, fontWeight: "700", textAlign: "right", width: "100%", paddingVertical: 12 },
   itemTitle: { fontWeight: "800", color: THEME.text, textAlign: "right", minHeight: 34 },
+  itemTitleList: { minHeight: 0, fontSize: 16 },
+  itemTitleCompact: { minHeight: 22, fontSize: 14 },
   itemMeta: { color: THEME.muted, fontSize: 14, textAlign: "right" },
+  itemMetaCompact: { fontSize: 12 },
   itemExciseBadge: {
     alignSelf: "flex-end",
     borderWidth: 1,

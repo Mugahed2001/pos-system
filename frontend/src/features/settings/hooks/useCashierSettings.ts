@@ -9,6 +9,8 @@ export type CashierSettings = {
   dineInPaymentTiming: "before_meal" | "after_meal";
   compactProductsGrid: boolean;
   enableServiceCharge: boolean;
+  serviceChargePercent: number;
+  deliveryFeeAmount: number;
   showHeldOrdersBar: boolean;
   showDeferredOrdersBar: boolean;
   soundAlerts: boolean;
@@ -24,6 +26,8 @@ export const DEFAULT_SETTINGS: CashierSettings = {
   dineInPaymentTiming: "before_meal",
   compactProductsGrid: true,
   enableServiceCharge: true,
+  serviceChargePercent: 0,
+  deliveryFeeAmount: 0,
   showHeldOrdersBar: true,
   showDeferredOrdersBar: true,
   soundAlerts: true,
@@ -52,6 +56,16 @@ function parseSettings(raw: string | null): CashierSettings {
         typeof parsed.compactProductsGrid === "boolean" ? parsed.compactProductsGrid : DEFAULT_SETTINGS.compactProductsGrid,
       enableServiceCharge:
         typeof parsed.enableServiceCharge === "boolean" ? parsed.enableServiceCharge : DEFAULT_SETTINGS.enableServiceCharge,
+      serviceChargePercent:
+        Number.isFinite(Number(parsed.serviceChargePercent)) &&
+        Number(parsed.serviceChargePercent) >= 0 &&
+        Number(parsed.serviceChargePercent) <= 100
+          ? Math.floor(Number(parsed.serviceChargePercent))
+          : DEFAULT_SETTINGS.serviceChargePercent,
+      deliveryFeeAmount:
+        Number.isFinite(Number(parsed.deliveryFeeAmount)) && Number(parsed.deliveryFeeAmount) >= 0
+          ? Number(parsed.deliveryFeeAmount)
+          : DEFAULT_SETTINGS.deliveryFeeAmount,
       showHeldOrdersBar: typeof parsed.showHeldOrdersBar === "boolean" ? parsed.showHeldOrdersBar : DEFAULT_SETTINGS.showHeldOrdersBar,
       showDeferredOrdersBar:
         typeof parsed.showDeferredOrdersBar === "boolean" ? parsed.showDeferredOrdersBar : DEFAULT_SETTINGS.showDeferredOrdersBar,

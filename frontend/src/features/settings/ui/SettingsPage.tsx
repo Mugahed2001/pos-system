@@ -45,6 +45,8 @@ export function SettingsPage() {
         showDeferredOrdersBar: key === "showDeferredOrdersBar" ? value : settings.showDeferredOrdersBar,
         enableServiceCharge: key === "enableServiceCharge" ? value : settings.enableServiceCharge,
         dineInPaymentTiming: settings.dineInPaymentTiming,
+        serviceChargePercent: settings.serviceChargePercent,
+        deliveryFeeAmount: settings.deliveryFeeAmount,
       });
     }
   };
@@ -56,6 +58,21 @@ export function SettingsPage() {
       showDeferredOrdersBar: settings.showDeferredOrdersBar,
       enableServiceCharge: settings.enableServiceCharge,
       dineInPaymentTiming: timing,
+      serviceChargePercent: settings.serviceChargePercent,
+      deliveryFeeAmount: settings.deliveryFeeAmount,
+    });
+  };
+
+  const handleNumericSettingChange = async (key: keyof typeof settings, value: number) => {
+    updateSetting(key, value);
+    if (key !== "serviceChargePercent" && key !== "deliveryFeeAmount") return;
+    await syncServerSettings(branchId, {
+      showHeldOrdersBar: settings.showHeldOrdersBar,
+      showDeferredOrdersBar: settings.showDeferredOrdersBar,
+      enableServiceCharge: settings.enableServiceCharge,
+      dineInPaymentTiming: settings.dineInPaymentTiming,
+      serviceChargePercent: key === "serviceChargePercent" ? value : settings.serviceChargePercent,
+      deliveryFeeAmount: key === "deliveryFeeAmount" ? value : settings.deliveryFeeAmount,
     });
   };
 
@@ -151,6 +168,24 @@ export function SettingsPage() {
             );
           }
 
+          if (setting.type === "numeric") {
+            return (
+              <SettingsNumericInput
+                key={setting.key}
+                label={setting.label}
+                description={setting.description}
+                value={settings[setting.key as keyof typeof settings] as number}
+                min={setting.min}
+                max={setting.max}
+                onValueChange={(value) =>
+                  handleNumericSettingChange(setting.key as keyof typeof settings, value)
+                }
+                disabled={isSyncing}
+                loading={isSyncing}
+              />
+            );
+          }
+
           return null;
         })}
       </SettingsSection>
@@ -189,7 +224,7 @@ export function SettingsPage() {
                 min={setting.min}
                 max={setting.max}
                 onValueChange={(value) =>
-                  updateSetting(setting.key as keyof typeof settings, value)
+                  handleNumericSettingChange(setting.key as keyof typeof settings, value)
                 }
                 disabled={isSyncing}
                 loading={isSyncing}
@@ -220,7 +255,7 @@ export function SettingsPage() {
                 min={setting.min}
                 max={setting.max}
                 onValueChange={(value) =>
-                  updateSetting(setting.key as keyof typeof settings, value)
+                  handleNumericSettingChange(setting.key as keyof typeof settings, value)
                 }
                 disabled={isSyncing}
                 loading={isSyncing}
@@ -318,4 +353,3 @@ function createStyles(theme: ReturnType<typeof useAppTheme>["theme"]) {
     },
   });
 }
-

@@ -181,7 +181,7 @@ function PosCashierSalesScreen() {
   return (
     <ProtectedRoute>
       <CashierShiftGuard>
-        <AppLayout title="نقطة البيع (الكاشير)">
+        <AppLayout title="">
           <SalesPosPage />
         </AppLayout>
       </CashierShiftGuard>

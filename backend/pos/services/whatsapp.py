@@ -42,25 +42,29 @@ def _message_template_for_event(event_type: str) -> str:
 
 def _message_payload(order: PosOrder, phone_number: str, event_type: str, template_name: str) -> dict[str, Any]:
     language_code = (getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "ar") or "ar").strip()
+    template: dict[str, Any] = {
+        "name": template_name,
+        "language": {"code": language_code},
+    }
+    # Meta's default "hello_world" template has no variables.
+    if template_name != "hello_world":
+        template["components"] = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": str(order.order_number or order.local_id or order.id)},
+                    {"type": "text", "text": order.get_status_display() if hasattr(order, "get_status_display") else order.status},
+                    {"type": "text", "text": str(order.grand_total)},
+                    {"type": "text", "text": event_type},
+                ],
+            }
+        ]
+
     return {
         "messaging_product": "whatsapp",
         "to": phone_number,
         "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {"code": language_code},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": str(order.order_number or order.local_id or order.id)},
-                        {"type": "text", "text": order.get_status_display() if hasattr(order, "get_status_display") else order.status},
-                        {"type": "text", "text": str(order.grand_total)},
-                        {"type": "text", "text": event_type},
-                    ],
-                }
-            ],
-        },
+        "template": template,
     }
 
 

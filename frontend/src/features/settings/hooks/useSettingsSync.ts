@@ -5,7 +5,12 @@ import { CashierSettings } from "./useCashierSettings";
 
 type SyncableSettings = Pick<
   CashierSettings,
-  "showHeldOrdersBar" | "showDeferredOrdersBar" | "enableServiceCharge" | "dineInPaymentTiming"
+  | "showHeldOrdersBar"
+  | "showDeferredOrdersBar"
+  | "enableServiceCharge"
+  | "dineInPaymentTiming"
+  | "serviceChargePercent"
+  | "deliveryFeeAmount"
 >;
 
 export function useSettingsSync() {
@@ -26,6 +31,8 @@ export function useSettingsSync() {
           show_deferred_orders: settings.showDeferredOrdersBar,
           enable_service_charge: settings.enableServiceCharge,
           dine_in_payment_timing: settings.dineInPaymentTiming,
+          service_charge_percent: settings.serviceChargePercent,
+          delivery_fee_amount: settings.deliveryFeeAmount,
         });
         notify.success("تم تحديث إعدادات الكاشير.");
         return true;

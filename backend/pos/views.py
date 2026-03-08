@@ -232,6 +232,8 @@ def _refresh_order_settlement_status(order: PosOrder) -> bool:
 
 
 def _schedule_whatsapp_notification(order: PosOrder, event_type: str) -> None:
+    if getattr(order.channel, "code", "") != OrderChannel.ChannelCode.DELIVERY:
+        return
     order_id = str(order.id)
     transaction.on_commit(lambda: send_order_whatsapp_notification(order_id=order_id, event_type=event_type))
 
